@@ -7,7 +7,6 @@ sampleStep = 10
 
 windowName = "img"  
 windowSize = [800, 600]  
-imgOrigin = cv2.imread("test/images/2.jpg") 
 
 pointsList = []
 choosed = False
@@ -16,16 +15,19 @@ choosedPointIndex = [-1,-1]
 def contourExtract(mask):
     global pointsList
     contours, hierarchy = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
-    tmp_layer = []
+
     for i in range(len(contours)):
+        tmp_layer = []
         j = 0
         cnt = contours[i]
         if len(contours[i]) > 100: # TODO:
             while 1:
-                tmp_layer.append((cnt[j][0][0],cnt[j][0][1]))
+                #tmp_layer.append((cnt[j][0][0],cnt[j][0][1]))
+                tmp_layer.append(cnt[j])
                 j += sampleStep
                 if j >= len(cnt):
                     break
+            tmp_layer = np.array(tmp_layer)
             pointsList.append(tmp_layer)
 
 def detectChoose(x,y):
@@ -33,7 +35,7 @@ def detectChoose(x,y):
     for i in range(len(pointsList)):
         cnt = pointsList[i]
         for j in range(len(cnt)):
-            point = cnt[j]
+            point = cnt[j][0]
             if (x > point[0] - pointSize and x < point[0] + pointSize) and (y > point[1] - pointSize and y < point[1] + pointSize):
                 choosedPointIndex = [i,j]
                 return True
@@ -47,7 +49,8 @@ def mouse(event, x, y, flags, param):
     elif event == cv2.EVENT_MOUSEMOVE and (flags & cv2.EVENT_FLAG_LBUTTON):
         if choosed:
             [i,j] = choosedPointIndex
-            pointsList[i][j] = (x,y)
+            pointsList[i][j][0][0] = x
+            pointsList[i][j][0][1] = y
     elif event == cv2.EVENT_LBUTTONUP:
         if choosed:
             choosedPointIndex = [-1,-1]
@@ -56,7 +59,10 @@ def mouse(event, x, y, flags, param):
         choosed = detectChoose(x,y)
         if choosed:
             [i,j] = choosedPointIndex
-            del pointsList[i][j]
+            tmp = pointsList[i].tolist()
+            del tmp[j]
+            del pointsList[i]
+            pointsList.insert(i,np.array(tmp))
         choosed = False
         choosedPointIndex = [-1,-1]
     elif event == cv2.EVENT_LBUTTONDBLCLK:
@@ -68,9 +74,18 @@ def mouse(event, x, y, flags, param):
                 P2 = pointsList[i][len(pointsList[i])-1]
             else:
                 P2 = pointsList[i][j-1]
-            pointsList[i].insert(j,((P1[0] + P2[0])//2, (P1[1] + P2[1])//2))
+            v1 = (P1[0][0] + P2[0][0])//2
+            v2 = (P1[0][1] + P2[0][1])//2
+            tmp = pointsList[i].tolist()
+            tmp.insert(j,P1.copy())
+            tmp[j][0][0] = v1
+            tmp[j][0][1] = v2
+            del pointsList[i]
+            pointsList.insert(i,np.array(tmp))
         choosed = False
         choosedPointIndex = [-1,-1]
+    elif event == cv2.EVENT_MBUTTONDBLCLK:
+        getNewMask("mask.jpg")
 
     curImg = imgOrigin.copy()
     draw(curImg, pointsList) 
@@ -86,31 +101,43 @@ def draw(img, points, mode=1):
             # draw the points
             for j in range(len(cnt)):
                 if [i,j] == choosedPointIndex and choosedPointIndex != [-1,-1]:
-                    cv2.circle(img, cnt[j], 3, oppoColor)
+                    cv2.circle(img, (cnt[j][0][0],cnt[j][0][1]), 3, oppoColor)
                 else:
-                    cv2.circle(img, cnt[j], 3, drawColor)
+                    cv2.circle(img, (cnt[j][0][0],cnt[j][0][1]), 3, drawColor)
             # draw the lines
             for j in range(len(cnt)):
                 if j == len(cnt)-1:
-                    cv2.line(img, cnt[j], cnt[0], oppoColor)
+                    cv2.line(img, (cnt[j][0][0],cnt[j][0][1]), (cnt[0][0][0],cnt[0][0][1]), oppoColor)
                 else:
-                    cv2.line(img, cnt[j], cnt[j+1], oppoColor)
+                    cv2.line(img, (cnt[j][0][0],cnt[j][0][1]), (cnt[j+1][0][0],cnt[j+1][0][1]), oppoColor)
         elif mode == 2:
-            #TODO
+            #TODO:
+            pass
     cv2.imshow(windowName, img)
+
+def getNewMask(filename):
+    img = np.zeros(imgOrigin.shape)
+    cv2.fillPoly(img,pointsList,(255,255,255))
+    cv2.imwrite(filename,img)
+
+
 
 # GraphCut on current Pointlist
 def refine(mode=1):
     if mode == 1:
+        pass
 
     elif mode == 2:
-        #TODO
+        #TODO:
+        pass
 
 
 
 if __name__ == "__main__":
+    imgOrigin = cv2.imread("test/images/2.jpg") 
     mask = cv2.imread("test/masks/2.png", cv2.IMREAD_GRAYSCALE)
     contourExtract(mask)
+
     cv2.namedWindow(windowName, cv2.WINDOW_GUI_NORMAL)
     cv2.resizeWindow(windowName, windowSize[0], windowSize[1])
     cv2.imshow(windowName, imgOrigin)
