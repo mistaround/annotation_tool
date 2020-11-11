@@ -28,7 +28,6 @@ class Annotation:
             cnt = contours[i]
             if len(contours[i]) > 100: # TODO:
                 while 1:
-                    #tmp_layer.append((cnt[j][0][0],cnt[j][0][1]))
                     tmp_layer.append(cnt[j])
                     j += self.sampleStep
                     if j >= len(cnt):
