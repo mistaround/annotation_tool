@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
+import GraphCut as GC
 
-class Annotation:
+class App:
 
     pointSize = 5
     pointColor = [(0,255,0),(255,0,0),(0,0,255)]
@@ -19,6 +20,7 @@ class Annotation:
         self.mask = mask
         self.output = output
         self.imgOrigin = cv2.imread(self.input) 
+        self.GC = GC.GCGraph(self.imgOrigin)
 
     def contourExtract(self, mask):
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
@@ -26,7 +28,7 @@ class Annotation:
             tmp_layer = []
             j = 0
             cnt = contours[i]
-            if len(contours[i]) > 100: # TODO:
+            if len(contours[i]) > 50: # TODO: bigger sample rate for arc curve
                 while 1:
                     tmp_layer.append(cnt[j])
                     j += self.sampleStep
@@ -90,10 +92,14 @@ class Annotation:
                 self.pointsList.insert(i,np.array(tmp))
             self.choosed = False
             self.choosedPointIndex = [-1,-1]
+        # Middle Button click to refine contour
+        elif event == cv2.EVENT_MBUTTONDOWN:
+            img = self.genNewMask()
+            cv2.imwrite(self.output,img)
         # Middle button double click to get mask
         elif event == cv2.EVENT_MBUTTONDBLCLK:
-            self.writeNewMask(self.output)
-
+            self.refine(self.genNewMask())
+            
         curImg = self.imgOrigin.copy()
         self.draw(curImg, self.pointsList) 
         
@@ -121,23 +127,35 @@ class Annotation:
                 pass
         cv2.imshow(self.windowName, img)
 
-    def writeNewMask(self, filename):
+    def genNewMask(self):
         img = np.zeros(self.imgOrigin.shape)
         cv2.fillPoly(img,self.pointsList,(255,255,255))
-        cv2.imwrite(filename,img)
+        return img
 
     # GraphCut on current Pointslist
-    def refine(self, mode=1):
+    def refine(self, mask, mode=1):
         if mode == 1:
-            pass
-
+            segments = self.GC.updateGraph(mask)
+            [x,y,z] = self.imgOrigin.shape
+            FGmask = np.ones((x,y), dtype=np.uint8) * 255
+            for i,p in enumerate(segments):
+                if p and (i<(x*y)):
+                    row = i // x
+                    col = i % x
+                    FGmask[row][col] = 0
+            cv2.imwrite('test.jpg',FGmask)
+            print('Finish')
+            # Recompute Contours        
+            #self.pointsList = []
+            #self.contourExtract(FGmask)
+            
         elif mode == 2:
             #TODO:
             pass
 
     def run(self):
-        img = cv2.imread(self.mask, cv2.IMREAD_GRAYSCALE)
-        self.contourExtract(img)
+        mask = cv2.imread(self.mask, cv2.IMREAD_GRAYSCALE)
+        self.contourExtract(mask)
 
         cv2.namedWindow(self.windowName, cv2.WINDOW_GUI_NORMAL)
         cv2.resizeWindow(self.windowName, self.windowSize[0], self.windowSize[1])
