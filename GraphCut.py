@@ -1,16 +1,18 @@
 import numpy as np
 import maxflow
-from sklearn import mixture 
+from sklearn import mixture,svm
+import math
 import cv2
 
 class GCGraph(object):
     def __init__(self,img):
+        self.k = 5
+        self.sigma = 1
+        self.alpha = 2
+        self.lam = 1000
+
         self.img = np.array(img)
         self.Im = self.img.reshape(-1,3)
-
-        self.k = 1
-        self.sigma = 1
-        self.lam = 4
         [x,y,z] = img.shape
         self.G = maxflow.Graph[int](x,y)
         self.nodes = self.G.add_nodes(x*y)
@@ -40,6 +42,25 @@ class GCGraph(object):
                 self.G.add_edge(i, i+x, w, k-w)
         print ("Finish")
 
+
+    def is_surrounded(self,array,x,y,val,step = 1):
+        flag = True
+        shape = array.shape
+        w,h = shape[0], shape[1]
+        for i in range(1,step+1):
+            if array[clamp(x,w)][clamp(y,h)][0] != val:
+                flag = False
+            if array[clamp(x-i,w)][clamp(y,h)][0] != val:
+                flag = False
+            if array[clamp(x+i,w)][clamp(y,h)][0] != val:
+                flag = False
+            if array[clamp(x,w)][clamp(y-i,h)][0] != val:
+                flag = False
+            if array[clamp(x,w)][clamp(y+i,h)][0] != val:
+                flag = False
+        return flag
+        
+
     def updateGraph(self,FGmask):
         FG = []
         BG = []
@@ -61,17 +82,49 @@ class GCGraph(object):
 
         print('Training Model')
         FG, BG = np.array(FG), np.array(BG)
-        x_train = np.concatenate([FG, BG])        
-        clf = mixture.GaussianMixture(n_components=2, covariance_type='full')
-        clf.fit(x_train)
+        FG_label = np.ones(FG.shape[0])
+        BG_label = np.zeros(BG.shape[0])
+        x_train = np.concatenate([FG, BG])
+        y_train = np.concatenate([FG_label, BG_label])        
+        #clf = mixture.GaussianMixture(n_components=2, covariance_type='full')
+        clf = svm.SVC(probability=True)
+        clf.fit(x_train,y_train)
+        #clf.fit(x_train)
 
         print('Adding New Edges')
         for i in range(0, w*h):
-            weights = self.lam * clf.predict_proba([self.Im[i]])
-            sourceWeight = weights[0][0]
-            sinkWeight = weights[0][1]
             # TODO: 1000 for seeds?
+            #weights = -self.alpha * np.log(clf.predict_proba([self.Im[i]])[0])
+            weights = -self.alpha * clf.predict_log_proba([self.Im[i]])[0]
+            sourceWeight = weights[0]
+            if sourceWeight > self.lam:
+                sourceWeight = self.lam
+            sinkWeight = weights[1]
+            if sinkWeight > self.lam:
+                sinkWeight = self.lam
             self.G.add_tedge(i, sourceWeight, sinkWeight)
+            '''
+            if self.is_surrounded(FGmask,i//w,i%w,255,step=3) == True:
+                self.G.add_tedge(i, self.lam, 0)
+            elif self.is_surrounded(FGmask,i//w,i%w,0,step=3) == True:
+                self.G.add_tedge(i, 0, self.lam)
+            else:
+                weights = -self.alpha * np.log(clf.predict_proba([self.Im[i]])[0])
+                sourceWeight = weights[0]
+                if sourceWeight > self.lam:
+                    sourceWeight = self.lam
+                sinkWeight = weights[1]
+                if sinkWeight > self.lam:
+                    sinkWeight = self.lam
+                self.G.add_tedge(i, sourceWeight, sinkWeight)
+            '''
+            '''
+            if FGmask[i//w][i%w][0] == 255:
+                self.G.add_tedge(i, self.lam, 0)
+            else:
+                self.G.add_tedge(i, 0, self.lam)
+            '''
+
 
         print('Computing Mincut')
         self.G.maxflow()
@@ -82,5 +135,10 @@ class GCGraph(object):
         return Iout
 
         
-
+def clamp(x,X):
+    if x < 0:
+        x = 0
+    elif x >= X:
+        x = X-1
+    return x
 
